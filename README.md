@@ -5,19 +5,26 @@ Pop!_OS and other GNOME-based Linux desktops.
 
 Rendering from the terminal is faster than the GUI, but starting one means
 hunting for the command, opening the right folder, and typing it all out every
-time. This app removes that friction: drag a `.blend` file onto the window (or
-straight onto its dock icon), click **Render**, and it fires off the terminal
-render for you in a real terminal window so you can watch the progress exactly
-as you would by hand.
+time. This app removes that friction: drop one or more `.blend` files (or a
+whole folder of them) into the queue, click **Render**, and it runs each one
+in turn in a real terminal window so you can watch the progress exactly as you
+would by hand.
+
+Blender has no built-in render queue, so batches run sequentially — each file
+as its own terminal render, one after another. If a file fails, the batch
+carries on and you get a summary popup at the end listing what succeeded and
+what failed, which is handy for unattended overnight queues.
 
 ![The Blender Render Launcher window](assets/screenshot.png)
 
 ## Features
 
-- Drag-and-drop a `.blend` file, or drop it onto the dock icon to load it instantly
-- One-click **Render** that launches a proper terminal render
+- **Batch queue** — drop multiple `.blend` files, or a folder, and render them one after another
+- Reorder and remove files in the queue before you hit render
+- Drop a folder to add every `.blend` inside it, with an optional **include subfolders** toggle
+- **Skip-on-failure with a summary** — if one file errors the batch keeps going, then a popup tells you what succeeded, what failed, and the exit code, so you can re-render or fix it in Blender
 - Choose between rendering the full **animation** (`-a`) or a **single frame** (`-f`)
-- Renders run from the `.blend` file's own folder, so relative output paths behave as expected
+- Renders run from each `.blend` file's own folder, so relative output paths behave as expected
 - Remembers your Blender command and last-used options between sessions
 - Auto-detects your terminal (gnome-terminal, GNOME Console, cosmic-term, tilix, konsole, xterm)
 - No third-party dependencies — just Python and GTK, which ship with Pop!_OS
@@ -54,13 +61,23 @@ your dock.
 ## Usage
 
 1. Launch the app from your dock or applications menu.
-2. Drag a `.blend` file into the window, or use **Browse…**. (You can also drag
-   a `.blend` straight onto the dock icon to open it pre-loaded.)
-3. Choose **Animation** (renders the full frame range) or **Single frame**.
-4. Click **Render**. A terminal opens and runs the render.
+2. Add files to the queue: drag `.blend` files or a folder into the window, or
+   use **Add files…**. Drop more at any time to grow the queue. (Dropping a
+   folder adds every `.blend` inside it; tick **include subfolders** first if
+   you want it to dig into nested folders.)
+3. Reorder with **▲ Up** / **▼ Down**, or prune with **✕ Remove** — handy when a
+   folder pulled in more than you meant.
+4. Choose **Animation** (renders the full frame range) or **Single frame**.
+5. Click **Render**. A terminal opens and works through the queue top to bottom,
+   showing a `[2/5] Rendering scene.blend` header before each file.
+
+When the batch finishes, a popup summarises the run. If everything rendered you
+get a simple confirmation; if anything failed, the popup lists each failed file
+with its exit code so you can decide whether to re-render it or open it in
+Blender to investigate. The batch never stops early on a single failure.
 
 Output location, format, samples and so on are all taken from the settings
-saved inside the `.blend` file itself — identical to running the command by hand.
+saved inside each `.blend` file itself — identical to running the command by hand.
 
 ### Using a Flatpak or Snap Blender
 
@@ -82,11 +99,14 @@ The app remembers it for next time. For most apt or Snap installs, the default
 
 ## How it works
 
-The app is a small GTK3 window. When you click Render it builds the same
-command you'd type yourself — for example `blender -b yourfile.blend -a` —
-changes into the file's folder, and hands it to whichever terminal emulator it
-finds installed. The render itself is unchanged; only the faff of starting it
-is automated.
+The app is a small GTK3 window holding a render queue. When you click Render it
+builds a single shell script that renders each queued file in turn — changing
+into each file's folder first, running `blender -b file.blend -a`, and capturing
+the exit code. That script runs in your terminal so you watch progress live,
+while the app quietly watches a small results file the script writes to. Once
+every file has reported, the app reads those exit codes back and shows the
+summary popup. The renders themselves are unchanged; only the queuing, the
+folder scanning, and the reporting are automated.
 
 ## License
 
