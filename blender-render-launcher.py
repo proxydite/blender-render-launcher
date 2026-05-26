@@ -142,6 +142,8 @@ class Launcher(Gtk.Window):
         col.set_cell_data_func(renderer, self._render_row)
         self.tree.append_column(col)
         self.tree.get_selection().set_mode(Gtk.SelectionMode.MULTIPLE)
+        # Show the full path when hovering a row (the list only shows basenames).
+        self.tree.set_tooltip_column(0)
 
         scroller = Gtk.ScrolledWindow()
         scroller.set_policy(Gtk.PolicyType.AUTOMATIC, Gtk.PolicyType.AUTOMATIC)
@@ -162,12 +164,14 @@ class Launcher(Gtk.Window):
         up_btn = Gtk.Button(label="\u25b2 Up")
         down_btn = Gtk.Button(label="\u25bc Down")
         remove_btn = Gtk.Button(label="\u2715 Remove")
+        dedupe_btn = Gtk.Button(label="Remove duplicates")
         clear_btn = Gtk.Button(label="Clear all")
         up_btn.connect("clicked", self.on_move_up)
         down_btn.connect("clicked", self.on_move_down)
         remove_btn.connect("clicked", self.on_remove_selected)
+        dedupe_btn.connect("clicked", self.on_dedupe)
         clear_btn.connect("clicked", self.on_clear)
-        for b in (up_btn, down_btn, remove_btn):
+        for b in (up_btn, down_btn, remove_btn, dedupe_btn):
             list_btns.pack_start(b, False, False, 0)
         list_btns.pack_end(clear_btn, False, False, 0)
         vbox.pack_start(list_btns, False, False, 0)
@@ -211,6 +215,21 @@ class Launcher(Gtk.Window):
         mode_box.pack_start(self.frame_spin, False, False, 0)
         vbox.pack_start(mode_box, False, False, 0)
 
+        # --- Resume from a specific frame (single-file use) ---
+        resume_box = Gtk.Box(orientation=Gtk.Orientation.HORIZONTAL, spacing=8)
+        self.resume_check = Gtk.CheckButton(label="Resume from frame:")
+        self.resume_check.set_tooltip_text(
+            "For picking up an interrupted animation. Renders the animation but "
+            "starts at this frame. Use with a single file in the queue."
+        )
+        self.resume_spin = Gtk.SpinButton.new_with_range(1, 1_000_000, 1)
+        self.resume_spin.set_value(1)
+        self.resume_spin.set_sensitive(False)
+        self.resume_check.connect("toggled", self.on_resume_toggled)
+        resume_box.pack_start(self.resume_check, False, False, 0)
+        resume_box.pack_start(self.resume_spin, False, False, 0)
+        vbox.pack_start(resume_box, False, False, 0)
+
         # --- Keep terminal open ---
         self.keep_open = Gtk.CheckButton(label="Keep terminal open after batch finishes")
         self.keep_open.set_active(cfg.get("keep_open", True))
@@ -228,8 +247,14 @@ class Launcher(Gtk.Window):
         btn_box.pack_start(self.render_btn, True, True, 0)
         vbox.pack_start(btn_box, False, False, 0)
 
+        # --- Live progress label (updated from the results file while running) ---
+        self.progress_label = Gtk.Label(label="")
+        self.progress_label.get_style_context().add_class("hint")
+        vbox.pack_start(self.progress_label, False, False, 0)
+
         self._results_path = None
         self._expected_count = 0
+        self._completed_count = 0
 
         if initial_files:
             self.add_paths(initial_files)
@@ -314,6 +339,26 @@ class Launcher(Gtk.Window):
         self.queue = []
         self._refresh()
 
+    def on_dedupe(self, _btn):
+        """Collapse the queue to unique paths, preserving first-seen order."""
+        seen = set()
+        deduped = []
+        for p in self.queue:
+            if p not in seen:
+                seen.add(p)
+                deduped.append(p)
+        removed = len(self.queue) - len(deduped)
+        self.queue = deduped
+        self._refresh()
+        if removed:
+            self.progress_label.set_text(
+                "Removed %d duplicate%s." % (removed, "" if removed == 1 else "s"))
+        else:
+            self.progress_label.set_text("No duplicates found.")
+
+    def on_resume_toggled(self, _btn):
+        self.resume_spin.set_sensitive(self.resume_check.get_active())
+
     def on_mode_toggled(self, _btn):
         self.frame_spin.set_sensitive(self.still_radio.get_active())
 
@@ -360,8 +405,24 @@ class Launcher(Gtk.Window):
             return
 
         blender = self.blender_entry.get_text().strip() or "blender"
+
+        # Resume-from-frame is a single-file operation: starting an animation
+        # at frame N across several different files makes no sense, so guard it.
+        resume = self.resume_check.get_active()
+        if resume and self.still_radio.get_active():
+            self.error("Resume-from-frame applies to animations, not single "
+                       "frames. Untick one of them.")
+            return
+        if resume and len(self.queue) > 1:
+            self.error("Resume-from-frame is for picking up one interrupted "
+                       "render. Keep just that single file in the queue.")
+            return
+
         if self.still_radio.get_active():
             render_args = "-f %d" % int(self.frame_spin.get_value())
+        elif resume:
+            # -s sets the start frame, then -a renders the animation from there.
+            render_args = "-s %d -a" % int(self.resume_spin.get_value())
         else:
             render_args = "-a"
 
@@ -413,6 +474,8 @@ class Launcher(Gtk.Window):
             "recursive": self.recursive_check.get_active(),
         })
 
+        self._completed_count = 0
+        self.progress_label.set_text("Starting\u2026 0/%d done" % self._expected_count)
         GLib.timeout_add(500, self._poll_results)
 
     def _poll_results(self):
@@ -424,6 +487,14 @@ class Launcher(Gtk.Window):
                 rows = [ln.rstrip("\n") for ln in f if ln.strip()]
         except Exception:
             return True
+
+        # Update the live label each time another file has reported in.
+        done = len(rows)
+        if done != self._completed_count:
+            self._completed_count = done
+            if done < self._expected_count:
+                self.progress_label.set_text(
+                    "Rendering\u2026 %d/%d done" % (done, self._expected_count))
 
         if len(rows) < self._expected_count:
             return True
@@ -445,6 +516,7 @@ class Launcher(Gtk.Window):
         except Exception:
             pass
         self._results_path = None
+        self.progress_label.set_text("")
         self._show_summary(succeeded, failed)
         return False
 

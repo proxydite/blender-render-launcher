@@ -20,10 +20,13 @@ what failed, which is handy for unattended overnight queues.
 ## Features
 
 - **Batch queue** — drop multiple `.blend` files, or a folder, and render them one after another
-- Reorder and remove files in the queue before you hit render
+- Reorder and remove files in the queue before you hit render, or strip out accidental duplicates with **Remove duplicates**
+- Hover any queued file to see its full path
+- A live progress label (`Rendering… 3/7 done`) tracks the batch in the app window while the terminal runs
 - Drop a folder to add every `.blend` inside it, with an optional **include subfolders** toggle
 - **Skip-on-failure with a summary** — if one file errors the batch keeps going, then a popup tells you what succeeded, what failed, and the exit code, so you can re-render or fix it in Blender
 - Choose between rendering the full **animation** (`-a`) or a **single frame** (`-f`)
+- **Resume from a frame** — pick up an interrupted animation by starting it from a chosen frame (single file at a time)
 - Renders run from each `.blend` file's own folder, so relative output paths behave as expected
 - Remembers your Blender command and last-used options between sessions
 - Auto-detects your terminal (gnome-terminal, GNOME Console, cosmic-term, tilix, konsole, xterm)
@@ -70,6 +73,15 @@ your dock.
 4. Choose **Animation** (renders the full frame range) or **Single frame**.
 5. Click **Render**. A terminal opens and works through the queue top to bottom,
    showing a `[2/5] Rendering scene.blend` header before each file.
+
+### Resuming an interrupted render
+
+If an animation stopped partway (you logged out, the machine rebooted, etc.),
+you can pick it up where it left off: queue just that one file, tick **Resume
+from frame** and set the frame to start from. It renders the animation from
+that frame onward rather than from the beginning. This is a single-file
+operation — it deliberately won't run if you've got several files queued, since
+starting them all at the same arbitrary frame wouldn't make sense.
 
 When the batch finishes, a popup summarises the run. If everything rendered you
 get a simple confirmation; if anything failed, the popup lists each failed file
