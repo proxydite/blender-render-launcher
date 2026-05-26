@@ -10,6 +10,8 @@ straight onto its dock icon), click **Render**, and it fires off the terminal
 render for you in a real terminal window so you can watch the progress exactly
 as you would by hand.
 
+![The Blender Render Launcher window](assets/screenshot.png)
+
 ## Features
 
 - Drag-and-drop a `.blend` file, or drop it onto the dock icon to load it instantly
