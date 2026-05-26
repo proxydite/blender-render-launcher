@@ -15,7 +15,7 @@ as its own terminal render, one after another. If a file fails, the batch
 carries on and you get a summary popup at the end listing what succeeded and
 what failed, which is handy for unattended overnight queues.
 
-![The Blender Render Launcher window](assets/screenshot.png)
+![The Blender Render Launcher window](assets/preview.png)
 
 ## Features
 
